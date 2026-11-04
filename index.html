@@ -1487,13 +1487,27 @@ const PROVEEDORES = [
     referencia:   (t.match(/Referencia:\s*(.*)/)||[])[1] || ''
   }),
   base: t => { const m = t.match(/Base Imponible:\s*([\d.,]+)/); return m ? num(m[1]) : null; },
-  // Además de las ventanas, Indalco imprime líneas "Suplemento NATURKOLOR76" con
-  // su propio UDS: y sin Pos. (68.820: 270 € que no cuadraban). Van como partida
-  // aparte, sin plano ni medidas.
-  bloques: lineas => emparejar(lineas, l => /^Pos\./.test(l.t), l => /^UDS:/.test(l.t))
-    .concat(emparejar(lineas, l => /^Suplemento\b/i.test(l.t), l => /^UDS:/.test(l.t))
-              .map(b => Object.assign(b, {tipo:'obra'})))
-    .sort((x, y) => x.h.orden - y.h.orden),
+  // Además de las ventanas, Indalco imprime otras partidas (suplementos de color,
+  // transporte…) con su propio UDS: y SIN Pos. (68.820: 270 € que no cuadraban).
+  // No se buscan por palabra, que cada proveedor escribe la suya: se buscan por
+  // estructura. Todo UDS: que no cierra una ventana cierra una partida sin
+  // ventana, y su título es la primera línea con letras entre el UDS: anterior
+  // y él (descartando lo que el proveedor repite en cada hoja).
+  bloques: lineas => {
+    const ventanas = emparejar(lineas, l => /^Pos\./.test(l.t), l => /^UDS:/.test(l.t));
+    const usados = new Set(ventanas.map(b => b.cierre.orden));
+    const udss = lineas.filter(l => /^UDS:/.test(l.t));
+    const ruido = /^(Pag\s*\d|Presupuesto\s*:|Importe|Total|Base\s+Imponible|I\.V\.A|TOTAL|FORMA DE PAGO|De acuerdo|Ruta|Operario|Fecha|Referencia|Obra|CE$)/i;
+    const sueltas = [];
+    udss.forEach((u, i) => {
+      if (usados.has(u.orden) || !i) return;             // sin UDS: anterior no hay dónde acotar
+      const ant = udss[i-1];
+      const titulo = lineas.find(l => l.orden > ant.orden && l.orden < u.orden &&
+                                      /[A-Za-zÁÉÍÓÚáéíóúñÑ]{3}/.test(l.t) && !ruido.test(l.t.trim()));
+      sueltas.push({h: titulo || u, cierre: u, tipo: 'obra'});
+    });
+    return ventanas.concat(sueltas).sort((x, y) => x.h.orden - y.h.orden);
+  },
 
   partida({h, cierre, dentro, trozos, pagina, lienzo, imgs, yCierre, tipo}){
     if (tipo === 'obra'){
