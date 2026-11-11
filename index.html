@@ -131,7 +131,9 @@ button.chip[aria-pressed="true"]{background:var(--cota);border-color:var(--cota)
 .hueco-edit{width:100%;font-family:inherit;font-size:14px;font-weight:600;color:var(--tinta);
             border:1px solid transparent;background:transparent;border-radius:4px;padding:2px 5px;
             margin-left:-5px}
-.linea-hueco{display:flex;align-items:center;gap:6px}
+textarea.hueco-edit{display:block;resize:none;overflow:hidden;line-height:1.35;
+            field-sizing:content;min-width:0}
+.linea-hueco{display:flex;align-items:flex-start;gap:6px}
 .tag-copia{flex:none;order:2;font-size:10px;font-weight:700;letter-spacing:.07em;
        text-transform:uppercase;color:var(--tinta-suave);background:var(--papel);
        border:1px solid var(--linea);border-radius:20px;padding:2px 9px}
@@ -348,7 +350,7 @@ input#t-dtopct{width:58px;padding:3px 6px;font-size:13px;text-align:right;
   <!-- Para saber de un vistazo si el navegador tiene la última versión o una
        copia guardada de antes. Sin esto no hay forma de distinguirlo, y ya nos
        costó una tarde: se estuvo probando una versión vieja sin saberlo. -->
-  <p class="version">Versión del <span id="version">04/11/2026</span> ·
+  <p class="version">Versión del <span id="version">11/11/2026</span> ·
      si te falla algo, recarga con <b>Cmd + Shift + R</b> antes de nada</p>
   <div id="error" class="error oculto"></div>
 
@@ -1831,6 +1833,100 @@ const PROVEEDORES = [
   }
 },
 {
+  /* Persianas El Parque: mosquiteras y persianas, no ventanas. Su presupuesto
+     no se parece a los demás: es una TABLA, una fila por artículo, sin "Pos.",
+     sin "UDS:" y sin planos (la única imagen de la hoja es el logotipo).
+
+     Cada artículo entra como partida sin ventana (`tipo:'obra'`), igual que las
+     de obra de Cealca: concepto, cantidad y precio. Las medidas no van a los
+     campos de ancho y alto, porque el proveedor las da en centímetros y de dos
+     maneras; se dejan escritas en el texto, tal cual las pone él.
+
+     Las columnas se reconocen por dónde EMPIEZA cada cifra. Van alineadas a la
+     derecha, así que una cifra más larga empieza antes: los cortes dejan hueco
+     para importes de cinco cifras. */
+  id: 'elparque', nombre: 'Persianas El Parque',
+  detectar: t => /PERSIANAS\s+EL\s+PARQUE/i.test(t),
+  cabecera: t => ({
+    numProveedor: ((t.match(/PRESUPUESTO\s+N[ºo°][ \t]*([\d.\/-]*\d)/)||[])[1] || ''),
+    fecha: ((t.match(/Fecha\s+(\d{1,2}\/\d{1,2}\/\d{4})/) ||
+             t.match(/(\d{1,2}\/\d{1,2}\/\d{4})/) || [])[1] || ''),
+    obra:  ((t.match(/Obra:[ \t]*(.*)/)||[])[1] || '').trim(),
+    referencia: ''
+  }),
+  /* Los rótulos del pie van en una línea y las cifras en la siguiente:
+       Subtotal   Base Imponible   I.V.A. 21,0 %   TOTAL
+       1.512,63   1.512,63         317,65          1.830,28
+     Con el patrón de los demás ("Base Imponible" y el primer número que venga)
+     se leería el 21 del IVA. Se cuenta qué puesto ocupa el rótulo y se coge la
+     cifra del mismo puesto. */
+  base: t => {
+    const m = t.match(/^(.*)Base\s+Imponible.*\n(.*)$/mi);
+    if (!m) return null;
+    const cifras = m[2].match(/\d[\d.]*,\d+/g) || [];
+    const v = num(cifras[/\S/.test(m[1]) ? 1 : 0]);
+    return isNaN(v) ? null : v;
+  },
+
+  celdas(l){
+    const cifra = (desde, hasta) => {
+      const s = l.trozos.find(s => s.x >= desde && s.x < hasta && /\d/.test(s.t));
+      const v = s ? num(s.t.replace(/[^\d.,-]/g,'')) : NaN;
+      return isNaN(v) ? null : v;
+    };
+    const texto = (desde, hasta) => unir(l.trozos.filter(s => s.x >= desde && s.x < hasta));
+    return {cdad: cifra(76, 99), concepto: texto(99, 300), medidas: texto(300, 395),
+            metraje: texto(395, 440), precio: cifra(440, 490), dto: cifra(490, 522),
+            importe: cifra(522, 999)};
+  },
+
+  // una fila de artículo lleva cantidad a la izquierda e importe a la derecha;
+  // debajo le cuelgan las líneas que solo tienen texto en la columna del concepto
+  bloques(lineas){
+    const esFila = l => { const c = this.celdas(l); return c.cdad != null && c.importe != null; };
+    const out = [];
+    lineas.forEach((h, i) => {
+      if (!esFila(h)) return;
+      let cierre = h;
+      for (let j = i + 1; j < lineas.length; j++){
+        const l = lineas[j];
+        if (l.pag !== h.pag || esFila(l) || !l.trozos.every(s => s.x >= 99 && s.x < 300)) break;
+        cierre = l;
+      }
+      out.push({h, cierre, tipo:'obra'});
+    });
+    return out;
+  },
+
+  partida({h, dentro}){
+    const c = this.celdas(h);
+    const lineas = [c.concepto].concat(dentro.map(l => unir(l.trozos))).filter(Boolean);
+    // las plisadas llevan la medida escrita en el concepto ("ALTO 202 X 181.5 ANCHO");
+    // las enrollables, en su columna ("132,50 x 174,50")
+    const esMedida = t => /\d/.test(t) && /\bALTO\b/i.test(t) && /\bANCHO\b/i.test(t);
+    // Lo escribe todo en mayúsculas y así llegaría al cliente. Se deja en
+    // minúsculas con la inicial en mayúscula; las medidas no se tocan.
+    const frase = t => /[a-záéíóúñ]/.test(t) ? t : t.charAt(0) + t.slice(1).toLowerCase();
+    const concepto = frase(lineas.filter(t => !esMedida(t)).join(' ').replace(/\s+/g,' ').trim());
+    const medidas = lineas.filter(esMedida).concat(c.medidas ? ['Medidas: ' + c.medidas] : []);
+
+    // Lo que se vende por metros no se puede contar en unidades: va como una
+    // sola partida por su importe, y la cantidad se deja escrita.
+    const entera = Number.isInteger(c.cdad) && c.cdad > 0;
+    const uds = entera ? c.cdad : 1;
+    // con descuento, lo que cuesta de verdad es el importe, no el precio de tarifa
+    const sinDto = c.precio != null && Math.abs(c.precio * uds - c.importe) < 0.005;
+    const coste = sinDto ? c.precio : Math.round(c.importe / uds * 10000) / 10000;
+
+    const pos = acortar(concepto, 70) || 'Partida';
+    const descripcion = (pos === concepto ? [] : [concepto]).concat(medidas);
+    if (!entera) descripcion.push('Cantidad: ' + (c.metraje || String(c.cdad).replace('.', ',')));
+    return {tipo:'obra', pos, ancho:null, alto:null, altoHoja:null, cajon:null,
+            color:'', herraje:'', transmitancia:'', descripcion,
+            uds, coste, plano:null, aspecto:0};
+  }
+},
+{
   /* Último recurso. Si ninguno de los de arriba encaja, se intenta leer el PDF
      con lo que tienen en común los presupuestos de este sector: cada ventana
      empieza en "Pos." y cierra en "UDS:".
@@ -2387,6 +2483,17 @@ function cuentas(base){
   const iva = neta * ivaPct/100;
   return {pct, dto, neta, ivaPct, iva, total: neta + iva};
 }
+/* El nombre de la partida ocupa las líneas que necesite. `field-sizing` lo hace
+   solo en los navegadores que lo tienen; en los demás se le pone el alto a mano. */
+function ajustarNombre(el){
+  el.style.height = 'auto';
+  if (el.scrollHeight) el.style.height = el.scrollHeight + 2 + 'px';   // +2: los bordes
+}
+function ajustarNombres(){
+  document.querySelectorAll('textarea.hueco-edit').forEach(ajustarNombre);
+}
+window.addEventListener('resize', ajustarNombres);
+
 function pintar(){
   renumerar();
   const cont = $('filas'); cont.innerHTML = '';
@@ -2420,9 +2527,12 @@ function pintar(){
         (p.esCopia ? '<span class="tag-copia">duplicado</span>' :
          p.esManual ? '<span class="tag-copia">añadida</span>' : '') +
         (p.num ? '<span class="num-hueco">V'+p.num+'</span>' : '') +
-        '<input class="hueco-edit" value="'+esc(p.pos)+'" data-nombre="'+i+
+        /* textarea y no input: un nombre largo ("Mosquitera plisada en negro
+           mate (cable de acero)") no cabe en una línea y había que recorrerlo
+           con las flechas. Crece hacia abajo lo que haga falta; ver ajustarNombres. */
+        '<textarea class="hueco-edit" rows="1" data-nombre="'+i+
         '" placeholder="'+(esVentana(p) ? 'Nombre de la ventana' : 'Concepto: mano de obra, desmontaje…')+
-        '" aria-label="Nombre de la partida"></div>' +
+        '" aria-label="Nombre de la partida">'+esc(p.pos)+'</textarea></div>' +
         // solo se enseña cuando hay algo que decir: que es una copia, o que el
         // número del proveedor ya no es el nuestro. Mientras van a la par
         // ("Pos. 3" y V3) decirlo es ruido
@@ -2478,6 +2588,9 @@ function pintar(){
         esc(p.descripcion.join('\n'))+'</textarea></div>';
     cont.appendChild(fila);
   });
+  ajustarNombres();
+  // la primera vez la tabla aún está oculta y no se puede medir: se repite al pintarse
+  requestAnimationFrame(ajustarNombres);
   const c = cuentas(base);
   $('t-ivapct').textContent = c.ivaPct;
   $('t-base').textContent = eur(base);
@@ -2929,8 +3042,10 @@ const AZUL = [31,107,150], GRIS = [90,110,120], NEGRO = [21,37,48], LINEA = [205
 function resumenDeLaObra(){
   const huecos = datos.partidas.filter(p => p.ancho).length;
   const otras  = datos.partidas.filter(p => p.tipo === 'obra').length;
-  return huecos + (huecos === 1 ? ' hueco' : ' huecos') +
-         (otras ? ' + ' + otras + (otras === 1 ? ' partida' : ' partidas') : '');
+  const lasOtras = otras + (otras === 1 ? ' partida' : ' partidas');
+  // sin ninguna ventana (un presupuesto solo de mosquiteras) "0 huecos + 12 partidas" sobra
+  if (!huecos && otras) return lasOtras;
+  return huecos + (huecos === 1 ? ' hueco' : ' huecos') + (otras ? ' + ' + lasOtras : '');
 }
 
 /* Cuántos puntos de PDF por cada punto del plano del proveedor.
@@ -3249,11 +3364,21 @@ $('filas').addEventListener('change', e => {
     notasDeMedida(iMedida);
   }
 });
+$('filas').addEventListener('keydown', e => {
+  // el nombre es un solo renglón de texto aunque se vea en dos: Intro lo da por escrito
+  if (e.key === 'Enter' && e.target.matches('textarea.hueco-edit')){
+    e.preventDefault(); e.target.blur();
+  }
+});
 $('filas').addEventListener('input', e => {
   const t = e.target;
   // el nombre y la descripción no cambian ningún total, así que no se repinta:
   // repintar aquí borraría lo que se está escribiendo
-  if (t.dataset.nombre !== undefined) datos.partidas[t.dataset.nombre].pos = t.value;
+  if (t.dataset.nombre !== undefined){
+    if (/[\r\n]/.test(t.value)) t.value = t.value.replace(/\s*[\r\n]+\s*/g, ' ');
+    datos.partidas[t.dataset.nombre].pos = t.value;
+    if (t.tagName === 'TEXTAREA') ajustarNombre(t);
+  }
   if (t.dataset.desc   !== undefined)
     datos.partidas[t.dataset.desc].descripcion =
       t.value.split('\n').map(s => s.trim()).filter(Boolean);
