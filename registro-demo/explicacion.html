@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Registro de presupuestos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --lienzo:#eef2f4; --papel:#fff; --papel-2:#f7f9fa;
+  --tinta:#152530; --tinta-media:#4a626e; --tinta-suave:#7b929d;
+  --linea:#d9e2e7; --linea-fuerte:#b9c8d0;
+  --cota:#1f6b96; --cota-suave:#e3eff6;
+  --beneficio:#0f7355; --ajustada:#a2650b; --ajustada-fondo:#fdf3e2;
+  --sombra:0 1px 2px rgba(21,37,48,.06), 0 8px 24px -16px rgba(21,37,48,.28);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--lienzo);color:var(--tinta);font-family:Archivo,"Helvetica Neue",Arial,sans-serif;
+  font-size:15px;line-height:1.5;padding:28px 16px 48px}
+.cifra{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.wrap{max-width:620px;margin:0 auto}
+.eyebrow{font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--cota);margin:0 0 8px}
+h1{font-weight:700;font-size:25px;line-height:1.3;margin:0 0 10px}
+.lead{color:var(--tinta-media);font-size:14.5px;line-height:1.6;margin:0 0 24px}
+.ficha{background:var(--papel);border:1px solid var(--linea);border-radius:8px;box-shadow:var(--sombra);
+  padding:18px 20px;margin-bottom:14px}
+.ficha h2{margin:0 0 4px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--tinta-suave)}
+.ficha h3{margin:4px 0 10px;font-size:16.5px;font-weight:700}
+.ficha p{margin:0 0 10px;font-size:13.5px;line-height:1.6;color:var(--tinta-media)}
+.ficha p:last-child{margin-bottom:0}
+.ficha ul{margin:0;padding-left:18px}
+.ficha li{margin:5px 0}
+.fases{display:flex;flex-direction:column;gap:10px}
+.fase{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--linea);border-radius:8px;
+  padding:13px 15px;background:var(--papel)}
+.fase .n{flex:none;width:26px;height:26px;border-radius:50%;background:var(--cota-suave);color:var(--cota);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;margin-top:1px}
+.fase b{display:block;font-size:14.5px;margin-bottom:6px}
+.fase p{margin:0 0 6px;font-size:13px;line-height:1.55;color:var(--tinta-media)}
+.fase p:last-child{margin-bottom:0}
+.fase p em{font-style:normal;font-weight:700;color:var(--tinta);margin-right:4px}
+.ok{border:1px solid #bfe3d4;background:#f0f9f5;border-radius:8px;padding:14px 16px;
+  font-size:13.5px;line-height:1.55;color:#2c6b56}
+.ok b{color:var(--beneficio)}
+.demo{border:1px solid var(--cota);background:var(--cota-suave);border-radius:8px;
+  padding:16px 18px;margin-bottom:14px}
+.demo h3{margin:0 0 6px;font-size:16px;font-weight:700;color:var(--cota)}
+.demo p{margin:0 0 12px;font-size:13.5px;line-height:1.55;color:var(--tinta-media)}
+.demo a.boton-demo{display:inline-block;background:var(--cota);color:#fff;text-decoration:none;
+  font-weight:700;font-size:14px;padding:10px 18px;border-radius:7px}
+.demo a.boton-demo:hover{filter:brightness(1.08)}
+.necesitas{display:flex;align-items:center;gap:10px;font-size:14px;padding:4px 0}
+.necesitas .chk{flex:none;width:18px;height:18px;border-radius:4px;border:1.5px solid var(--linea-fuerte)}
+footer{text-align:center;color:var(--tinta-suave);font-size:12.5px;margin-top:22px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Ventanas Aura</p>
+  <h1>Que la herramienta recuerde tus presupuestos</h1>
+  <p class="lead">Cómo se numeran, se guardan y se encuentran tus presupuestos a partir de ahora
+    — y qué hay detrás de cada pieza.</p>
+
+  <div class="demo">
+    <h3>Pruébala tú mismo</h3>
+    <p>Es una demo funcional, no la versión definitiva. Genera un presupuesto de ejemplo,
+       búscalo, reábrelo y duplícalo — de verdad. A partir de tu respuesta se terminará de
+       afinar, por ejemplo los filtros de búsqueda, hasta dejarlo listo para el día a día.</p>
+    <a class="boton-demo" href="index.html">Abrir la demo →</a>
+  </div>
+
+  <div class="ficha">
+    <h2>El problema de hoy</h2>
+    <h3>No hay un sitio donde consultar qué le hiciste a cada cliente</h3>
+    <ul>
+      <li>El número de presupuesto lo escribes tú, a mano, y puede repetirse o desordenarse.</li>
+      <li>No queda un registro de qué presupuesto, ni con qué margen, le hiciste a cada cliente.</li>
+      <li>Encontrar uno antiguo depende de que recuerdes en qué carpeta lo guardaste.</li>
+    </ul>
+  </div>
+
+  <div class="ficha">
+    <h2>La solución técnica</h2>
+    <h3>Un programa propio, dentro de tu cuenta de Google</h3>
+    <p>Cada vez que generas un presupuesto, la herramienta habla con un pequeño programa (un
+      Apps Script) que vive dentro de tu propia cuenta de Google, no en la nuestra. Ese programa
+      le asigna el siguiente número y guarda una fila con los datos del presupuesto en una hoja
+      de cálculo tuya, junto con los archivos en una carpeta de tu Drive.</p>
+    <p>Se descartó montar una base de datos propia, o usar servicios como Supabase o Firebase,
+      porque exigirían una cuenta nueva, un coste mensual, y que tus datos vivieran en un
+      servidor que no es tuyo. Con este enfoque, todo queda guardado en tu propia cuenta,
+      gratis, y sin que nadie más —tampoco yo— tenga acceso.</p>
+  </div>
+
+  <div class="ficha">
+    <h2>Lo que cambia</h2>
+    <h3>Se construye en tres etapas, para ir sobre seguro</h3>
+    <p>Van en orden, una encima de la otra: la 2 necesita la 1 hecha, y la 3 necesita la 1 y la 2.
+      No se pueden intercambiar ni saltar ninguna.</p>
+    <div class="fases">
+      <div class="fase"><div class="n">1</div><div>
+        <b>Número automático</b>
+        <p><em>Qué hace:</em>al generar un presupuesto, la herramienta le pone el número ella
+          sola, en orden.</p>
+        <p><em>Qué ganas:</em>no tienes que acordarte de qué número tocaba, y nunca se repite
+          entre el ordenador y el móvil.</p>
+      </div></div>
+      <div class="fase"><div class="n">2</div><div>
+        <b>Se guarda solo</b>
+        <p><em>Qué hace:</em>al generar, el presupuesto queda apuntado solo: sus archivos en una
+          carpeta de tu Drive, y sus datos en una fila de tu hoja de cálculo.</p>
+        <p><em>Qué ganas:</em>aunque todavía no busques nada, cada presupuesto deja un rastro por
+          si algún día lo necesitas.</p>
+      </div></div>
+      <div class="fase"><div class="n">3</div><div>
+        <b>Buscar y reabrir</b>
+        <p><em>Qué hace:</em>un botón «Mis presupuestos» te deja buscar, ver, reabrir o duplicar
+          cualquiera de los que ya se guardaron, por cliente, obra, número, teléfono o email.
+          Cada cliente se guarda solo la primera vez que escribes su nombre, y se reutiliza en
+          sus siguientes presupuestos sin que tengas que darlo de alta en ningún sitio.</p>
+        <p><em>Qué ganas:</em>esto es lo que pediste: encontrar qué le hiciste a cada cliente y
+          con qué margen, sin bucear en carpetas. Y si un cliente cambia de teléfono o email,
+          lo corriges una vez y queda actualizado para la próxima.</p>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="ficha">
+    <h2>Lo que necesitas tú</h2>
+    <div class="necesitas"><div class="chk"></div> Una cuenta de Google (la de Gmail de siempre vale)</div>
+    <div class="necesitas"><div class="chk"></div> Dar permiso una vez, al configurarlo</div>
+    <p style="margin-top:10px">La primera vez, Google te pedirá confirmar que autorizas a la
+      herramienta a guardar datos en tu Drive — el mismo aviso que ves al instalar cualquier
+      aplicación que usa tu cuenta de Google.</p>
+  </div>
+
+  <div class="ok">
+    <b>Lo que no cambia:</b> sigue funcionando sin internet, sigue sin servidor, y tus costes
+    siguen sin salir de tu ordenador — salvo lo que tú decidas guardar en tu propio Google, que es tuyo, no mío.
+  </div>
+
+  <div class="ficha">
+    <h2>Cómo trabajamos esto</h2>
+    <ul>
+      <li>Cada etapa se prueba primero en una web aparte, y solo pasa a tu herramienta real
+        cuando queda validada — igual que se ha hecho con todo lo anterior.</li>
+      <li>Si te parece bien, valoro las horas que me va a llevar y te paso un presupuesto nuevo
+        antes de empezar.</li>
+    </ul>
+  </div>
+
+  <p style="font-size:12px;color:var(--tinta-suave);line-height:1.5;margin:18px 0 0">
+    * Lo que has probado es una demo funcional, no la versión definitiva — la versión definitiva
+    quedará todavía mejor.</p>
+
+  <footer>Ventanas Aura · demo interna, sin datos de clientes reales en esta página</footer>
+</div>
+</body>
+</html>
