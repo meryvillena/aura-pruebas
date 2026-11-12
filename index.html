@@ -350,7 +350,7 @@ input#t-dtopct{width:58px;padding:3px 6px;font-size:13px;text-align:right;
   <!-- Para saber de un vistazo si el navegador tiene la última versión o una
        copia guardada de antes. Sin esto no hay forma de distinguirlo, y ya nos
        costó una tarde: se estuvo probando una versión vieja sin saberlo. -->
-  <p class="version">Versión del <span id="version">11/11/2026</span> ·
+  <p class="version">Versión del <span id="version">12/11/2026</span> ·
      si te falla algo, recarga con <b>Cmd + Shift + R</b> antes de nada</p>
   <div id="error" class="error oculto"></div>
 
@@ -1782,7 +1782,21 @@ const PROVEEDORES = [
       if (!esCab(h)) return;
       const k = lineas.findIndex((l, j) => j > i && /^NºUD\./.test(l.t));
       if (k < 0 || (lineas.slice(i+1, k).some(esCab))) return;
-      if (lineas[k+1]) pares.push({h, cierre: lineas[k+1], nUD: lineas[k]});
+      if (!lineas[k+1]) return;
+      /* Las cifras de la fila (unidades, PVP/UD. y TOTAL) no siempre caen a la
+         misma altura: en el 202611106 el total va 2,6 pt por debajo del precio
+         unitario y se leía como otra línea, así que la partida se quedaba sin
+         precio. Se juntan las líneas de cifras que sigan pegadas (menos de 6 pt). */
+      let cierre = lineas[k+1];
+      for (let j = k + 2; j < lineas.length; j++){
+        const l = lineas[j];
+        if (l.pag !== cierre.pag || l.y - lineas[k+1].y >= 6 || esCab(l) ||
+            !l.trozos.every(s => s.x > 320 && /^[\d.,]+$/.test(s.t.trim()))) break;
+        cierre = Object.assign({}, l, {
+          trozos: cierre.trozos.concat(l.trozos).sort((a, b) => a.x - b.x)});
+        cierre.t = unir(cierre.trozos);
+      }
+      pares.push({h, cierre, nUD: lineas[k]});
     });
     return pares;
   },
