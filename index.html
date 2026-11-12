@@ -92,6 +92,7 @@ button.chip[aria-pressed="true"]{background:var(--cota);border-color:var(--cota)
 .cuadre.mal b{color:var(--ajustada)}
 .cuadre.bien{border-color:#bfe3d4;background:#f0f9f5;color:#2c6b56;font-size:12.5px;padding:9px 14px}
 .cuadre.bien b{display:inline;margin:0;color:var(--beneficio)}
+.cuadre .solas{display:block;margin-top:4px;opacity:.85}
 
 /* tabla */
 .tabla{margin-top:20px;background:var(--papel);border:1px solid var(--linea);border-radius:8px;
@@ -2061,11 +2062,161 @@ const PROVEEDORES = [
    dinero o ventanas lo salta. */
 const queSuman = ps => ps.filter(p => p.tipo !== 'titulo');
 
+/* ---------- segundo intento de lectura de precios ----------
+
+   Las reglas de cada proveedor buscan cada cifra en un sitio exacto de la hoja.
+   Si el proveedor la mueve un poco (el total 2,6 pt más abajo en el 202611106
+   de EIRA, una columna corrida), la partida se queda sin precio. Antes de dar
+   el aviso naranja se prueba a encontrarla sola:
+
+     1. Se recogen los importes que haya PEGADOS a cada partida: hasta 12 pt
+        por encima o por debajo de su línea de cabecera o de cierre, en
+        cualquier columna. Cada cifra es solo de la partida que le queda más
+        cerca; así dos partidas no pueden intercambiarse los precios.
+     2. Si el proveedor imprime precio unitario y total de la fila, solo vale
+        una cifra que cumpla unidades × unitario = total.
+     3. La base imponible del proveedor hace de juez: solo se acepta si con
+        esas cifras la suma de TODAS las partidas da la base, y si hay una única
+        manera de conseguirlo. Con dos maneras, o con ninguna, no se toca nada
+        y sale el aviso de siempre.
+
+   Un precio ya leído solo se cambia si la cifra nueva pasa la comprobación del
+   punto 2, y como mucho en dos partidas. Lo que no puede arreglar: una partida
+   que no se ha leído entera, o un presupuesto que no cuadra por un descuento. */
+const CERCA_DE_LA_FILA = 12;
+let SEGUNDO_INTENTO = true;      // las pruebas lo apagan para ver la lectura sin arreglar
+
+function importesDe(texto){
+  // con decimales ("1.489,43", "449,86", "859.32") o enteros ("50", "1.300"):
+  // algún proveedor escribe "50" y "150" en vez de "50,00". Los enteros solo
+  // valen si cuadran con otra cifra de la fila (unidades × unitario = total).
+  return String(texto).replace(/€/g,' ').split(/\s+/).map(t => {
+    const dec = /^\d{1,3}(\.\d{3})+,\d{2,4}$/.test(t) || /^\d+,\d{2,4}$/.test(t) || /^\d+\.\d{2}$/.test(t);
+    const entero = !dec && (/^\d{1,3}(\.\d{3})+$/.test(t) || /^\d{2,6}$/.test(t));
+    if (!dec && !entero) return null;
+    return {v: entero ? parseInt(t.replace(/\./g,''), 10) : num(t), entero,
+            dec: entero ? 0 : t.length - 1 - Math.max(t.lastIndexOf(','), t.lastIndexOf('.'))};
+  }).filter(c => c && c.v > 0);
+}
+
+function segundoIntento(partidas, origen, paginas, totales){
+  const base = totales.base;
+  if (base == null) return [];
+  const filas = partidas.map((p, i) => ({p, b: origen[i]})).filter(f => f.p.tipo !== 'titulo' && f.b);
+  if (filas.length !== queSuman(partidas).length) return [];
+  const cents = v => Math.round(v * 100);
+  const sumaDe = costes => filas.reduce((s, f, k) => s + costes[k] * (f.p.uds || 1), 0);
+  const actuales = filas.map(f => f.p.coste || 0);
+  const cuadra = costes => Math.abs(Math.round(sumaDe(costes) * 100) / 100 - base) < 0.05;
+  if (actuales.every(Boolean) && cuadra(actuales)) return [];
+
+  // 1. las cifras pegadas a cada partida
+  const anclas = [];
+  filas.forEach((f, k) => [f.b.h, f.b.cierre].forEach(l => anclas.push({k, pag: l.pag, y: l.y})));
+  const cifras = filas.map(() => []);
+  paginas.forEach((pg, n) => pg.trozos.forEach(s => {
+    if (s.gira) return;
+    const vs = importesDe(s.t).filter(c => Math.abs(c.v - base) > 0.005);
+    if (!vs.length) return;
+    let mejor = null, empate = false;
+    anclas.forEach(a => {
+      if (a.pag !== n) return;
+      const d = Math.abs(a.y - s.y);
+      if (d > CERCA_DE_LA_FILA) return;
+      if (!mejor || d < mejor.d - 0.01){ mejor = {k: a.k, d}; empate = false; }
+      else if (Math.abs(d - mejor.d) <= 0.01 && a.k !== mejor.k) empate = true;
+    });
+    if (mejor && !empate) vs.forEach(c => cifras[mejor.k].push(c));
+  }));
+
+  // 2. qué precios unitarios salen de esas cifras
+  const sinRepetir = vs => vs.filter((v, i) => vs.findIndex(w => Math.abs(w - v) < 0.005) === i);
+  const r4 = v => Math.round(v * 10000) / 10000;
+  const opciones = cifras.map((cs, k) => {
+    const u = filas[k].p.uds || 1, pares = [], sueltas = [];
+    cs.forEach((a, i) => cs.forEach((b, j) => {
+      if (i === j || Math.abs(a.v * u - b.v) > 0.005 * u + 0.0051) return;
+      // con cuatro decimales en el unitario manda el total, como en EIRA
+      pares.push(a.dec <= 2 ? a.v : r4(b.v / u));
+    }));
+    // Sueltas, solo las cifras tal como están impresas. No se prueba total ÷
+    // unidades: si las unidades se han leído mal (en EIRA, con la columna
+    // corrida, salían 610 uds a 1 €), esa división cuadra con la base y es falsa.
+    cs.filter(a => !a.entero).forEach(a => sueltas.push(a.v));
+    return {pares: sinRepetir(pares), sueltas: sinRepetir(sueltas)};
+  });
+  const imprimeAmbos = opciones.filter(o => o.pares.length).length * 2 >= filas.length;
+
+  const vacias = [], conPrecio = [];
+  filas.forEach((f, k) => {
+    if (!actuales[k]) vacias.push({k, vals: imprimeAmbos ? opciones[k].pares
+                                         : sinRepetir(opciones[k].pares.concat(opciones[k].sueltas))});
+    else {
+      const otras = opciones[k].pares.filter(v => Math.abs(v - actuales[k]) >= 0.005);
+      if (otras.length) conPrecio.push({k, vals: otras});
+    }
+  });
+  if (vacias.some(z => !z.vals.length)) return [];     // una sin precio y sin candidata: no hay arreglo
+
+  // 3. la base hace de juez: se prueban las combinaciones, de menos cambios a más
+  const tope = cents(base) + 5;
+  let pasos = 0;
+  const probar = cambian => {
+    const hallados = [], costes = actuales.slice();
+    const fijo = cents(sumaDe(costes.map((c, k) => cambian.some(z => z.k === k) ? 0 : c)));
+    const bajar = (i, acum) => {
+      if (hallados.length > 1 || ++pasos > 200000) return;
+      if (i === cambian.length){ if (cuadra(costes)) hallados.push(costes.slice()); return; }
+      const z = cambian[i], u = filas[z.k].p.uds || 1;
+      for (const v of z.vals){
+        if (acum + cents(v * u) > tope) continue;
+        costes[z.k] = v;
+        bajar(i + 1, acum + cents(v * u));
+      }
+    };
+    bajar(0, fijo);
+    return hallados;
+  };
+  const tandas = [[]];
+  conPrecio.forEach(a => tandas.push([a]));
+  conPrecio.forEach((a, i) => conPrecio.slice(i + 1).forEach(b => tandas.push([a, b])));
+  let buenos = [], nivel = -1;
+  for (const extra of tandas){
+    if (!vacias.length && !extra.length) continue;
+    if (buenos.length && extra.length > nivel) break;   // ya hay arreglo con menos cambios
+    const h = probar(vacias.concat(extra));
+    if (pasos > 200000) return [];
+    if (h.length){ buenos = buenos.concat(h); nivel = extra.length; }
+    if (buenos.length > 1) return [];                   // dos maneras de cuadrar: no se elige
+  }
+  /* Último caso: la columna se ha corrido y TODAS las partidas han cogido otra
+     cifra de su fila (el total en vez del unitario, las unidades…). Son más de
+     dos cambios, pero cada uno va comprobado dos veces: en su fila solo hay un
+     precio que cumpla unidades × unitario = total, y con todos a la vez la suma
+     da la base. Es una sola combinación, así que no hay nada que elegir. */
+  if (!buenos.length && !vacias.some(z => z.vals.length !== 1)){
+    const todos = actuales.slice();
+    vacias.forEach(z => { todos[z.k] = z.vals[0]; });
+    filas.forEach((f, k) => { if (actuales[k] && opciones[k].pares.length === 1) todos[k] = opciones[k].pares[0]; });
+    if (cuadra(todos)) buenos = [todos];
+  }
+  if (buenos.length !== 1) return [];
+
+  const hechas = [];
+  filas.forEach((f, k) => {
+    if (Math.abs(buenos[0][k] - actuales[k]) < 0.005) return;
+    f.p.costeLeido = actuales[k];           // lo que salió de la primera lectura
+    f.p.coste = f.p.recuperado = buenos[0][k];
+    hechas.push(f.p);
+  });
+  return hechas;
+}
+
 async function leerPDF(buffer){
   const doc = await pdfjsLib.getDocument({data:buffer}).promise;
   if (pdfAbierto && pdfAbierto !== doc) pdfAbierto.destroy();   // el del presupuesto anterior
   pdfAbierto = doc;
-  const cab = {}, partidas = [], totales = {iva:21};
+  const cab = {}, partidas = [], origen = [], totales = {iva:21};
 
   // ---- primera pasada: leer el texto de todas las páginas ----
   const paginas = [];
@@ -2156,9 +2307,14 @@ async function leerPDF(buffer){
       // la página donde está su plano, contada desde 1: el recortador abre ahí
       if (partida.pagPlano == null) partida.pagPlano = h.pag + 1;
       partidas.push(partida);
+      origen.push(b);             // de qué líneas del PDF salió, para el segundo intento
     }
   }
   if (!partidas.length) throw new Error('sin-partidas');
+
+  // Si alguna partida se ha quedado sin precio o la suma no da la base del
+  // proveedor, se busca el precio alrededor de la fila. Ver segundoIntento().
+  totales.recuperadas = SEGUNDO_INTENTO ? segundoIntento(partidas, origen, paginas, totales).length : 0;
 
   // Comprobación de cuentas, para todos los proveedores. El proveedor escribe
   // su base imponible en el PDF, así que se suma lo leído y se compara. No se
@@ -2393,10 +2549,20 @@ function pintarCuadre(){
       'antes de enviar el presupuesto. Puedes corregir cualquier precio a mano.';
     return;
   }
+  /* Precios que encontró el segundo intento (ver segundoIntento). Se le dice a
+     Carlos cuáles son, solo aquí en pantalla: ni el PDF del cliente ni el Excel
+     lo llevan. Si luego escribe otro coste a mano, esa partida deja de salir. */
+  const solas = cuentan.filter(p => p.recuperado != null && !p.costeTocado);
+  const notaSolas = !solas.length ? '' : '<span class="solas">' +
+    (solas.length === 1 ? 'El precio de ' + esc(etiqueta(solas[0])) + ' no estaba'
+                        : 'Los precios de ' + esc(solas.map(etiqueta).join(', ')) + ' no estaban') +
+    ' donde suele ponerlo este proveedor: ' + (solas.length === 1 ? 'lo' : 'los') +
+    ' he buscado al lado y con ' + (solas.length === 1 ? 'él' : 'ellos') +
+    ' las cuentas cuadran. Échale un vistazo.</span>';
   if (tot.cuadra){
     c.classList.add('bien');
     c.innerHTML = '<b>Cuentas comprobadas.</b> Los costes suman ' + eur(suma) +
-      ', igual que la base imponible del proveedor.';
+      ', igual que la base imponible del proveedor.' + notaSolas;
     return;
   }
   const dif = suma - tot.base;
